@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Login Page</title>
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+	<style>
+		#message {
+			font-size: 1.2em;
+			margin-bottom: 20px;
+		}
+		.blue {
+			color: blue;
+		}
+		.lime {
+			color: lime;
+		}
+		.dimmed {
+			opacity: 0.6; /* Dimming effect */
+			pointer-events: none; /* Disable pointer events */
+		}
+		.hidden {
+			display: none;
+		}
+	</style>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-100">
+	<div id="login-container" class="p-6 bg-white rounded shadow-md w-full max-w-sm">
+		<div id="message" class="blue mb-4">Hello, please enter your mobile number to sign in to Happy Club</div>
+		
+		<input type="tel" id="phone-number" placeholder="Enter phone number" class="mb-2 p-2 border border-gray-300 rounded w-full" maxlength="10">
+		
+		<button id="login-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Send Code</button>
+		<div id="recaptcha-container"></div>
+		<input type="text" id="verification-code" placeholder="Enter verification code" class="mb-2 p-2 border border-gray-300 rounded w-full" style="display:none;" inputmode="numeric">
+		<button id="verify-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full" style="display:none;">Verify Code</button>
+		
+		<!-- Email login elements -->
+		<input type="email" id="email-address" placeholder="Enter email address" class="mb-2 p-2 border border-gray-300 rounded w-full">
+		<button id="email-login-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Email me my login link</button>
+		<div id="email-sent-message" class="hidden mt-4 text-gray-600"></div>
+
+		<button id="signout-button" class="mb-4 p-2 bg-red-500 text-white rounded w-full" style="display:none;">Sign Out</button>
+		<div id="airtable-status" class="mt-4 text-gray-600">Checking Airtable connection...</div>
+		<div id="mobile-status" class="hidden mt-2">
+			<span>Mobile: </span><span id="mobile-number">Not signed in</span>
+		</div>
+
+		<div id="profile-container" class="hidden">
+			<h1 class="text-xl font-bold mb-4">Account Page</h1>
+			<div id="user-info" class="mb-4">
+				<p><strong>Mobile:</strong> <span id="profile-mobile-number">Loading...</span></p>
+				<p><strong>Username:</strong> <span id="username">Loading...</span></p>
+				<p><strong>First Name:</strong> <span id="first-name">Loading...</span></p>
+				<p><strong>Last Name:</strong> <span id="last-name">Loading...</span></p>
+				<p><strong>Email:</strong> <span id="email">Loading...</span></p>
+				<p><strong>Member Type:</strong> <span id="member-type">Loading...</span></p>
+			</div>
+			<button id="update-profile-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Update Profile</button>
+
+			<h2 class="text-lg font-bold mt-8 mb-4">Happy Club</h2>
+			<button id="happy-club-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Visit Happy Club</button>
+			<button id="join-happy-club-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Join the Happy Club</button>
+			<p class="text-center mt-2">
+				Need help signing up? <a href="https://savory-psychology-649.notion.site/How-to-join-d9ec8e0d4d474cbcbba87ebcfbdb680b?pvs=4" target="_blank" class="text-blue-500">Here's step by step instructions on how to sign up</a>
+			</p>
+
+			<h2 class="text-lg font-bold mt-8 mb-4">Master Class</h2>
+			<button id="join-master-class-button" class="mb-4 p-2 bg-blue-500 text-white rounded w-full">Join my Master Class</button>
+			<p class="text-center mt-2">
+				Already a member? <a href="https://billing.stripe.com/p/login/7sI3et3O71b34i4aEE" target="_blank" class="text-blue-500">Manage your subscription</a>
+			</p>
+		</div>
+	</div>
+
+	<script type="module">
+		// Import the functions you need from the SDKs you need
+		import { initializeApp } from "https://www.gstatic.com/firebasejs/9.8.0/firebase-app.js";
+		import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.8.0/firebase-auth.js";
+
+		// Your Firebase configuration object
+		const firebaseConfig = {
+			apiKey: "AIzaSyACBO64SK2oszaG1nCT9eDCY19sU7uXFb0",
+			authDomain: "happy-club-4b9c6.firebaseapp.com",
+			projectId: "happy-club-4b9c6",
+			storageBucket: "happy-club-4b9c6.appspot.com",
+			messagingSenderId: "576647028980",
+			appId: "1:576647028980:web:1e5a371d1e349919c9bea1",
+			measurementId: "G-8SNNGVPGBH"
+		};
+
+		// Initialize Firebase
+		console.log('🚀 Initializing Firebase app...');
+		const app = initializeApp(firebaseConfig);
+		const auth = getAuth(app);
+		console.log('✅ Firebase app initialized.');
+
+		const baseID = 'app5YI0Re9mA0md7z';
+		const apiKey = 'patCtettCOnYI94VS.bd7fb1b026878bd6218a0f5b7357ae3ecbce9c1af187531c0d8916965fbafb23';
+		
+		// Table name variables
+		const loginsTableName = 'tbl885ri5HFCMs9RG';
+		const membersTableName = 'tble20MIr9ribNP4C';
+
+		document.getElementById('phone-number').addEventListener('input', (event) => {
+			let phoneNumber = event.target.value;
+			console.log(`📱 Phone number input: ${phoneNumber}`);
+			// Trim input to ensure it doesn't exceed 10 characters
+			if (phoneNumber.length > 10) {
+				event.target.value = phoneNumber.slice(0, 10); // Truncate to first 10 characters
+				console.log('✂️ Trimmed phone number to 10 digits');
+			}
+		});
+
+		document.getElementById('phone-number').addEventListener('keypress', (event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault(); // Prevent the default action
+				console.log('⏩ Enter key pressed, triggering Send Code button');
+				document.getElementById('login-button').click(); // Trigger the click event on the "Send Code" button
+			}
+		});
+
+		document.getElementById('login-button').addEventListener('click', () => {
+			let phoneNumber = document.getElementById('phone-number').value;
+			console.log(`📞 Phone number entered: ${phoneNumber}`);
+
+			// Validate phone number length and format
+			const phoneNumberPattern = /^\d{10}$/;
+			if (!phoneNumberPattern.test(phoneNumber)) {
+				alert("🚫 Please enter a valid 10-digit phone number.");
+				console.log('❌ Invalid phone number format');
+				return;
+			}
+
+			// Store the original phone number
+			localStorage.setItem('phoneNumber', phoneNumber);
+			console.log('💾 Phone number saved to localStorage');
+
+			// Format phone number to E.164 format
+			const formattedPhoneNumber = '+1' + phoneNumber;
+			console.log(`🔢 Formatted phone number: ${formattedPhoneNumber}`);
+
+			const loginButton = document.getElementById('login-button');
+			loginButton.disabled = true; // Disable the button
+			loginButton.classList.add('dimmed'); // Apply the dimming style
+			loginButton.innerText = 'Sending...'; // Change button text to "Sending"
+			console.log('🔄 Sending code... Button disabled and dimmed');
+
+			const appVerifier = new RecaptchaVerifier('recaptcha-container', {
+				'size': 'invisible'
+			}, auth);
+			appVerifier.render().then(widgetId => {
+				console.log(`🔒 Invisible reCAPTCHA rendered with widgetId: ${widgetId}`);
+			});
+
+			signInWithPhoneNumber(auth, formattedPhoneNumber, appVerifier)
+				.then((confirmationResult) => {
+					// SMS sent. Prompt user to type the code from the message.
+					window.confirmationResult = confirmationResult;
+					console.log('📲 SMS sent. Confirmation result:', confirmationResult);
+					document.getElementById('verification-code').style.display = 'block';
+					document.getElementById('verify-button').style.display = 'block';
+					document.getElementById('message').innerText = "Enter the OTP sent to your mobile number";
+					
+					// Hide the "Sending..." button
+					loginButton.style.display = 'none';
+					console.log('📩 Verification code input and verify button displayed');
+				}).catch((error) => {
+					console.error('❌ Error during signInWithPhoneNumber:', error);
+					// Re-enable button on error
+					loginButton.disabled = false;
+					loginButton.classList.remove('dimmed');
+					loginButton.innerText = 'Send Code';
+					console.log('⚠️ Error during sign-in. Button re-enabled');
+				});
+		});
+
+		document.getElementById('verification-code').addEventListener('input', () => {
+			const code = document.getElementById('verification-code').value;
+			console.log(`🔑 Verification code entered: ${code}`);
+			if (code.length === 6) {
+				verifyCode(code);
+			}
+		});
+
+		async function createLoginRecord(identifier) {
+			const url = `https://api.airtable.com/v0/${baseID}/${loginsTableName}`;
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${apiKey}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					fields: {
+						Mobile: identifier.includes('@') ? null : identifier,
+						Email: identifier.includes('@') ? identifier : null
+					}
+				})
+			});
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+			const data = await response.json();
+			console.log('📝 Login record created in Airtable:', data);
+		}
+
+		async function checkUserExists(identifier) {
+			const filterFormula = identifier.includes('@') ? `{Email}='${identifier}'` : `{Mobile}='${identifier}'`;
+			const url = `https://api.airtable.com/v0/${baseID}/${membersTableName}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+			const response = await fetch(url, {
+				headers: {
+					Authorization: `Bearer ${apiKey}`
+				}
+			});
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+			const data = await response.json();
+			console.log(`👤 User exists check for ${identifier}:`, data.records.length > 0);
+			return data.records.length > 0;
+		}
+
+		async function fetchUserData(identifier) {
+			const filterFormula = identifier.includes('@') ? `{Email}='${identifier}'` : `{Mobile}='${identifier}'`;
+			const url = `https://api.airtable.com/v0/${baseID}/${membersTableName}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+			console.log(`🌐 Fetching user data for identifier: ${identifier}`);
+			const response = await fetch(url, {
+				headers: {
+					Authorization: `Bearer ${apiKey}`
+				}
+			});
+			const data = await response.json();
+			if (data.records.length > 0) {
+				const userRecord = data.records[0].fields;
+				console.log('🗂 User data fetched from Airtable:', userRecord);
+				document.getElementById('profile-mobile-number').innerText = identifier;
+				document.getElementById('username').innerText = userRecord.Username || 'Not found';
+				document.getElementById('first-name').innerText = userRecord['First Name'] || 'Not found';
+				document.getElementById('last-name').innerText = userRecord['Last Name'] || 'Not found';
+				document.getElementById('email').innerText = userRecord.Email || 'Not available';
+				document.getElementById('member-type').innerText = userRecord['Member Type'] || 'Not available';
+			} else {
+				console.log('🔍 No matching user data found in Airtable.');
+				document.getElementById('username').innerText = 'Not found';
+				document.getElementById('first-name').innerText = 'Not found';
+				document.getElementById('last-name').innerText = 'Not found';
+				document.getElementById('email').innerText = 'Not available';
+				document.getElementById('member-type').innerText = 'Not available';
+			}
+		}
+
+		async function verifyCode(code) {
+			console.log(`🔑 Verifying code: ${code}`);
+			window.confirmationResult.confirm(code).then(async (result) => {
+				// User signed in successfully.
+				const user = result.user;
+				const identifier = localStorage.getItem('phoneNumber');
+				console.log('✅ User signed in successfully:', user);
+				document.getElementById('message').innerText = "Signed in :)";
+				document.getElementById('message').classList.remove('blue');
+				document.getElementById('message').classList.add('lime');
+				document.getElementById('phone-number').style.display = 'none';
+				document.getElementById('login-button').style.display = 'none';
+				document.getElementById('verification-code').style.display = 'none';
+				document.getElementById('verify-button').style.display = 'none';
+				document.getElementById('signout-button').style.display = 'block';
+				document.getElementById('mobile-status').classList.remove('hidden');
+				document.getElementById('mobile-number').innerText = identifier;
+				console.log('📲 User signed in and UI updated');
+
+				// Save logged in state
+				localStorage.setItem('loggedIn', true);
+				console.log('💾 Logged in state saved to localStorage');
+
+				// Create login record in Airtable
+				await createLoginRecord(identifier);
+
+				// Fetch user data
+				await fetchUserData(identifier);
+
+				// Show profile container
+				document.getElementById('profile-container').classList.remove('hidden');
+				console.log('📂 Profile container displayed');
+			}).catch((error) => {
+				console.error('❌ Error during confirmationResult.confirm:', error);
+			});
+		}
+
+		document.getElementById('email-login-button').addEventListener('click', () => {
+			const email = document.getElementById('email-address').value;
+			const actionCodeSettings = {
+				url: window.location.href,
+				handleCodeInApp: true,
+			};
+
+			sendSignInLinkToEmail(auth, email, actionCodeSettings)
+				.then(() => {
+					// The link was successfully sent. Save the email locally to complete sign-in.
+					window.localStorage.setItem('emailForSignIn', email);
+					document.getElementById('email-sent-message').innerText = `🔗 Email sent! Check your inbox at ${email} for the login link.`;
+					document.getElementById('email-sent-message').classList.remove('hidden');
+					console.log(`📧 Email login link sent to ${email}`);
+				})
+				.catch((error) => {
+					console.error('❌ Error sending email login link:', error);
+					alert(`🚫 Error sending email: ${error.message}`);
+				});
+		});
+
+		// Check if the URL contains the sign-in link
+		if (isSignInWithEmailLink(auth, window.location.href)) {
+			let email = window.localStorage.getItem('emailForSignIn');
+			if (!email) {
+				// If the email is not available in localStorage, prompt the user to provide it.
+				email = window.prompt('Please provide your email for confirmation');
+			}
+
+			signInWithEmailLink(auth, email, window.location.href)
+				.then(async (result) => {
+					// User signed in successfully.
+					const user = result.user;
+					console.log('✅ Email link sign-in successful:', user);
+					window.localStorage.removeItem('emailForSignIn');
+
+					document.getElementById('message').innerText = "Signed in with email :)";
+					document.getElementById('message').classList.remove('blue');
+					document.getElementById('message').classList.add('lime');
+					document.getElementById('phone-number').style.display = 'none';
+					document.getElementById('login-button').style.display = 'none';
+					document.getElementById('verification-code').style.display = 'none';
+					document.getElementById('verify-button').style.display = 'none';
+					document.getElementById('signout-button').style.display = 'block';
+					document.getElementById('mobile-status').classList.remove('hidden');
+					document.getElementById('mobile-number').innerText = email;
+					document.getElementById('profile-container').classList.remove('hidden');
+
+					await createLoginRecord(email);
+					await fetchUserData(email);
+
+					console.log('📲 User signed in with email and UI updated');
+				})
+				.catch((error) => {
+					console.error('❌ Error during email link sign-in:', error);
+				});
+		}
+
+		document.getElementById('signout-button').addEventListener('click', () => {
+			console.log('🚪 Sign out button clicked.');
+			signOut(auth).then(() => {
+				console.log('👋 User signed out.');
+				document.getElementById('message').innerText = "Hello, please enter your mobile number to sign in to Happy Club";
+				document.getElementById('message').classList.remove('lime');
+				document.getElementById('message').classList.add('blue');
+				document.getElementById('phone-number').style.display = 'block';
+				document.getElementById('login-button').style.display = 'block';
+				document.getElementById('verification-code').style.display = 'none';
+				document.getElementById('verify-button').style.display = 'none';
+				document.getElementById('email-address').style.display = 'block';
+				document.getElementById('email-login-button').style.display = 'block';
+				document.getElementById('signout-button').style.display = 'none';
+				document.getElementById('profile-container').classList.add('hidden'); // Hide profile container
+				document.getElementById('phone-number').value = '';
+				document.getElementById('verification-code').value = '';
+				document.getElementById('email-address').value = '';
+				document.getElementById('mobile-status').classList.add('hidden');
+				document.getElementById('email-sent-message').classList.add('hidden');
+				localStorage.removeItem('phoneNumber');
+				localStorage.removeItem('emailForSignIn');
+				localStorage.removeItem('loggedIn');
+				console.log('🔄 UI reset to initial state');
+			}).catch((error) => {
+				console.error('❌ Error during signOut:', error);
+			});
+		});
+
+		onAuthStateChanged(auth, (user) => {
+			const savedIdentifier = window.localStorage.getItem('emailForSignIn') || window.localStorage.getItem('phoneNumber');
+			if (user && savedIdentifier) {
+				console.log('👤 User is signed in:', user);
+				document.getElementById('message').innerText = "Signed in :)";
+				document.getElementById('message').classList.remove('blue');
+				document.getElementById('message').classList.add('lime');
+				document.getElementById('phone-number').style.display = 'none';
+				document.getElementById('login-button').style.display = 'none';
+				document.getElementById('verification-code').style.display = 'none';
+				document.getElementById('verify-button').style.display = 'none';
+				document.getElementById('email-address').style.display = 'none';
+				document.getElementById('email-login-button').style.display = 'none';
+				document.getElementById('signout-button').style.display = 'block';
+				document.getElementById('mobile-status').classList.remove('hidden');
+				document.getElementById('mobile-number').innerText = savedIdentifier;
+				fetchUserData(savedIdentifier); // Fetch user data based on saved identifier (email or phone number)
+				document.getElementById('profile-container').classList.remove('hidden'); // Show profile container
+				console.log('📂 Profile container displayed');
+			} else {
+				console.log('🚫 No user is signed in.');
+				document.getElementById('message').innerText = "Hello, please enter your mobile number to sign in to Happy Club";
+				document.getElementById('message').classList.remove('lime');
+				document.getElementById('message').classList.add('blue');
+				document.getElementById('phone-number').style.display = 'block';
+				document.getElementById('login-button').style.display = 'block';
+				document.getElementById('verification-code').style.display = 'none';
+				document.getElementById('verify-button').style.display = 'none';
+				document.getElementById('email-address').style.display = 'block';
+				document.getElementById('email-login-button').style.display = 'block';
+				document.getElementById('signout-button').style.display = 'none';
+				document.getElementById('profile-container').classList.add('hidden'); // Hide profile container
+				document.getElementById('mobile-status').classList.add('hidden');
+				document.getElementById('email-sent-message').classList.add('hidden');
+				console.log('🔄 UI reset to initial state');
+			}
+		});
+
+		// Test Airtable connection function
+		async function testAirtableConnection() {
+			const url = `https://api.airtable.com/v0/${baseID}/${membersTableName}?pageSize=1`;
+			try {
+				console.log('🌐 Attempting to connect to Airtable with URL:', url);
+				const response = await fetch(url, {
+					headers: {
+						Authorization: `Bearer ${apiKey}`
+					}
+				});
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+				const data = await response.json();
+				console.log('🔌 Airtable connection successful:', data);
+				document.getElementById('airtable-status').innerText = 'Airtable connection successful ✅';
+				document.getElementById('airtable-status').classList.add('text-green-600');
+			} catch (error) {
+				console.error('❌ Error testing Airtable connection:', error);
+				document.getElementById('airtable-status').innerText = 'Airtable connection failed ❌';
+				document.getElementById('airtable-status').classList.add('text-red-600');
+			}
+		}
+
+		// Call the test function
+		testAirtableConnection();
+	</script>
+</body>
+</html>
