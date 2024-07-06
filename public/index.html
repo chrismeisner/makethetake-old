@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Prototype</title>
+  <style>
+	body {
+	  font-family: Arial, sans-serif;
+	  display: flex;
+	  flex-direction: column;
+	  align-items: center;
+	  padding: 20px;
+	}
+	.selection-container {
+	  display: flex;
+	  justify-content: center;
+	  margin-bottom: 20px;
+	}
+	.selection-box {
+	  background-color: #f0f0f0;
+	  width: 100px;
+	  height: 100px;
+	  display: flex;
+	  align-items: center;
+	  justify-content: center;
+	  margin: 10px;
+	  cursor: pointer;
+	  font-size: 24px;
+	  font-weight: bold;
+	}
+	.selection-box:hover {
+	  background-color: #ddd;
+	}
+	.selected {
+	  border: 2px solid blue;
+	}
+	#submitBtn {
+	  background-color: #007bff;
+	  color: white;
+	  border: none;
+	  padding: 10px 20px;
+	  font-size: 16px;
+	  cursor: pointer;
+	}
+	#submitBtn:hover {
+	  background-color: #0056b3;
+	}
+	ul {
+	  list-style-type: none;
+	  padding: 0;
+	}
+  </style>
+</head>
+<body>
+  <h1>Pick a letter</h1>
+  <div class="selection-container">
+	<div class="selection-box" data-take="A">A</div>
+	<div class="selection-box" data-take="B">B</div>
+  </div>
+  <form id="selectionForm">
+	<input type="text" id="mobile" placeholder="Mobile Number" required />
+	<input type="hidden" id="take" />
+	<button type="button" id="submitBtn">Submit</button>
+  </form>
+  <div id="successMessage" style="display:none;">Success!</div>
+  <ul id="feed"></ul>
+
+  <script src="https://cdn.socket.io/4.1.2/socket.io.min.js"></script>
+  <script>
+	const socket = io();
+	let selectedTake = '';
+
+	document.querySelectorAll('.selection-box').forEach(box => {
+	  box.addEventListener('click', function() {
+		document.querySelectorAll('.selection-box').forEach(b => b.classList.remove('selected'));
+		this.classList.add('selected');
+		selectedTake = this.getAttribute('data-take');
+	  });
+	});
+
+	document.getElementById('submitBtn').addEventListener('click', function() {
+	  const mobile = document.getElementById('mobile').value;
+	  const take = selectedTake;
+	  
+	  if (mobile && take) {
+		this.textContent = 'Sending...';
+		socket.emit('newSelection', { mobile, take });
+	  } else {
+		alert('Please enter your mobile number and select a letter.');
+	  }
+	});
+
+	// Handle real-time updates
+	socket.on('updateFeed', function(data) {
+	  const feed = document.getElementById('feed');
+	  const newEntry = document.createElement('li');
+	  newEntry.textContent = `${data.mobile} selected ${data.take}`;
+	  feed.appendChild(newEntry);
+
+	  // Show success message and hide form elements
+	  document.getElementById('mobile').style.display = 'none';
+	  document.getElementById('submitBtn').style.display = 'none';
+	  document.getElementById('successMessage').style.display = 'block';
+	});
+
+	// Handle existing takes
+	socket.on('existingTakes', function(takes) {
+	  const feed = document.getElementById('feed');
+	  feed.innerHTML = ''; // Clear the existing feed before adding new entries
+	  takes.forEach(data => {
+		const newEntry = document.createElement('li');
+		newEntry.textContent = `${data.mobile} selected ${data.take}`;
+		feed.appendChild(newEntry);
+	  });
+	});
+
+	// Fetch existing takes when the client connects
+	socket.on('connect', function() {
+	  socket.emit('fetchExistingTakes');
+	});
+  </script>
+</body>
+</html>
